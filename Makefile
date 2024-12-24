@@ -13,10 +13,10 @@ PATH := $(LOCAL)/bin:$(PATH)
 
 # Path to the .traineddata directory with traineddata suitable for training
 # (for example from tesseract-ocr/tessdata_best). Default: $(LOCAL)/share/tessdata
-TESSDATA =  $(LOCAL)/share/tessdata
+TESSDATA = $(C:\Program Files\Tesseract-OCR\tessdata)
 
 # Name of the model to be built. Default: $(MODEL_NAME)
-MODEL_NAME = foo
+MODEL_NAME = my_model
 
 # Data directory for output files, proto model, start model, etc. Default: $(DATA_DIR)
 DATA_DIR = data
@@ -40,8 +40,7 @@ NUMBERS_FILE := $(OUTPUT_DIR)/$(MODEL_NAME).numbers
 PUNC_FILE := $(OUTPUT_DIR)/$(MODEL_NAME).punc
 
 # Name of the model to continue from. Default: '$(START_MODEL)'
-START_MODEL =
-
+START_MODEL = 
 LAST_CHECKPOINT = $(OUTPUT_DIR)/checkpoints/$(MODEL_NAME)_checkpoint
 
 # Name of the proto model. Default: '$(PROTO_MODEL)'
@@ -53,7 +52,7 @@ TESSDATA_REPO = _best
 # If EPOCHS is given, it is used to set MAX_ITERATIONS.
 ifeq ($(EPOCHS),)
 # Max iterations. Default: $(MAX_ITERATIONS)
-MAX_ITERATIONS := 10000
+MAX_ITERATIONS := 1000
 else
 MAX_ITERATIONS := -$(EPOCHS)
 endif
@@ -65,14 +64,14 @@ DEBUG_INTERVAL := 0
 ifdef START_MODEL
 LEARNING_RATE := 0.0001
 else
-LEARNING_RATE := 0.002
+LEARNING_RATE := 0.001
 endif
 
 # Network specification. Default: $(NET_SPEC)
 NET_SPEC := [1,36,0,1 Ct3,3,16 Mp3,3 Lfys48 Lfx96 Lrx96 Lfx192 O1c\#\#\#]
 
 TESSERACT_SCRIPTS := Arabic Armenian Bengali Bopomofo Canadian_Aboriginal Cherokee Cyrillic
-TESSERACT_SCRIPTS += Devanagari Ethiopic Georgian Greek Gujarati Gurmukhi
+TESSERACT_SCRIPTS += Devanagari Ethiopic Georgian Greek Gujarati Gurmukhi German
 TESSERACT_SCRIPTS += Hangul Han Hebrew Hiragana Kannada Katakana Khmer Lao Latin
 TESSERACT_SCRIPTS += Malayalam Myanmar Ogham Oriya Runic Sinhala Syriac Tamil Telugu Thai
 
@@ -105,7 +104,7 @@ PSM = 13
 RANDOM_SEED := 0
 
 # Ratio of train / eval training data. Default: $(RATIO_TRAIN)
-RATIO_TRAIN := 0.90
+RATIO_TRAIN := 0.80
 
 # Default Target Error Rate. Default: $(TARGET_ERROR_RATE)
 TARGET_ERROR_RATE := 0.01
@@ -260,20 +259,28 @@ $(ALL_LSTMF): $(ALL_FILES:%.gt.txt=%.lstmf)
 	tesseract "$<" $* --psm $(PSM) lstm.train
 
 .PHONY: traineddata
+
+# Директории и файлы
 CHECKPOINT_FILES = $(wildcard $(OUTPUT_DIR)/checkpoints/$(MODEL_NAME)*.checkpoint)
 BESTMODEL_FILES = $(subst checkpoints,tessdata_best,$(CHECKPOINT_FILES:%.checkpoint=%.traineddata))
 FASTMODEL_FILES = $(subst checkpoints,tessdata_fast,$(CHECKPOINT_FILES:%.checkpoint=%.traineddata))
-# Create best and fast .traineddata files from each .checkpoint file
-traineddata: $(BESTMODEL_FILES)
-traineddata: $(FASTMODEL_FILES)
+
+# Правило для создания директории tessdata_best и tessdata_fast
 $(OUTPUT_DIR)/tessdata_best $(OUTPUT_DIR)/tessdata_fast $(OUTPUT_DIR)/eval:
 	@mkdir -p $@
+
+# Основное правило для создания best и fast .traineddata файлов
+traineddata: $(BESTMODEL_FILES) $(FASTMODEL_FILES)
+
+# Правило для создания .traineddata для best модели
 $(OUTPUT_DIR)/tessdata_best/%.traineddata: $(OUTPUT_DIR)/checkpoints/%.checkpoint | $(OUTPUT_DIR)/tessdata_best
 	lstmtraining \
           --stop_training \
           --continue_from $< \
           --traineddata $(PROTO_MODEL) \
           --model_output $@
+
+# Правило для создания .traineddata для fast модели
 $(OUTPUT_DIR)/tessdata_fast/%.traineddata: $(OUTPUT_DIR)/checkpoints/%.checkpoint | $(OUTPUT_DIR)/tessdata_fast
 	lstmtraining \
           --stop_training \
@@ -363,10 +370,13 @@ $(BEST_LSTMEVAL_FILES): $(OUTPUT_DIR)/eval/%.eval.log: $(OUTPUT_DIR)/tessdata_be
 # Make TSV with lstmeval CER and checkpoint filename parts
 TSV_LSTMEVAL = $(OUTPUT_DIR)/lstmeval.tsv
 .INTERMEDIATE: $(TSV_LSTMEVAL)
+
 $(TSV_LSTMEVAL): $(BEST_LSTMEVAL_FILES)
 	@echo "Name	CheckpointCER	LearningIteration	TrainingIteration	EvalCER	IterationCER	SubtrainerCER" > "$@"
-	@{ $(foreach F,$^,echo -n "$F "; grep BCER $F;) } | sort -rn | \
-	sed -e 's|^$(OUTPUT_DIR)/eval/$(MODEL_NAME)_\([0-9.]*\)_\([0-9]*\)_\([0-9]*\).eval.log BCER eval=\([0-9.]*\).*$$|\t\1\t\2\t\3\t\4\t\t|' >>  "$@"
+	@for F in $^; do \
+		echo -n "$$F "; \
+		grep 'BCER' $$F | sed -e 's|^$(OUTPUT_DIR)/eval/$(MODEL_NAME)_\([0-9.]*\)_\([0-9]*\)_\([0-9]*\).eval.log BCER eval=\([0-9.]*\).*$$|\t\1\t\2\t\3\t\4\t\t|'; \
+	done | sort -rn >> "$@"
 # Make TSV with CER at every 100 iterations.
 TSV_100_ITERATIONS = $(OUTPUT_DIR)/iteration.tsv
 .INTERMEDIATE: $(TSV_100_ITERATIONS)
